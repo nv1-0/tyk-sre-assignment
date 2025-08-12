@@ -9,4 +9,5 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "main.py", "--address", ":8080"]
+ENTRYPOINT ["python", "main.py"]
+CMD ["--address", ":8080"]
