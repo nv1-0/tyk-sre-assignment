@@ -23,7 +23,7 @@ if __name__ == "__main__":
     api_client = client.ApiClient()
 
     try:
-        version = app.get_kubernetes_version(api_client)
+        version = app.get_kubernetes_version()
     except Exception as e:
         print(e)
         sys.exit(1)
