@@ -7,8 +7,8 @@ on:
     branches: [ main ]
 
 env:
-  REGISTRY: nishant33
-  IMAGE_NAME: tyk-sre-assignment
+  REGISTRY: docker.io
+  IMAGE_NAME: nishant33/tyk-sre-assignment
 
 jobs:
   test:
