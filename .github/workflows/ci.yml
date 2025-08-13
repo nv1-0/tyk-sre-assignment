@@ -5,6 +5,16 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
 
 env:
   REGISTRY: docker.io
@@ -29,6 +39,8 @@ jobs:
   build:
     needs: setup
     runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.tag.outputs.tag }}
     steps:
     - uses: actions/checkout@v4
     
@@ -63,3 +75,53 @@ jobs:
         tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: 
+      name: ${{ github.event.inputs.environment }}
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.12.0'
+    
+    - name: Set up Kubernetes CLI
+      uses: azure/setup-kubectl@v3
+      with:
+        version: '1.28.0'
+    
+    - name: Configure Kubernetes
+      run: |
+        mkdir -p ~/.kube
+        echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+        chmod 600 ~/.kube/config
+    
+    - name: Verify cluster connection
+      run: kubectl cluster-info
+    
+    - name: Set deployment values
+      id: deployment-values
+      run: |
+        if [ "${{ github.event.inputs.environment }}" = "production" ]; then
+          echo "namespace=tyk-sre-prod" >> $GITHUB_OUTPUT
+          echo "replicas=3" >> $GITHUB_OUTPUT
+        else
+          echo "namespace=tyk-sre-staging" >> $GITHUB_OUTPUT
+          echo "replicas=1" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Deploy with Helm
+      run: |
+        helm upgrade --install tyk-sre-assignment-${{ github.event.inputs.environment }} ./charts/tyk-sre-assignment \
+          --set image.tag=${{ needs.build.outputs.image-tag }} \
+          --set image.repository=${{ env.IMAGE_NAME }} \
+          --set replicaCount=${{ steps.deployment-values.outputs.replicas }} \
+          --namespace ${{ steps.deployment-values.outputs.namespace }} \
+          --create-namespace \
+          --wait \
+          --timeout 10m
